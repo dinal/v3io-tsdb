@@ -127,8 +127,16 @@ func (cs *chunkStore) GetState() storeState {
 }
 
 // return the DB path for storing the metric
-func (cs *chunkStore) GetMetricPath(metric *MetricState, tablePath string) string {
-	return fmt.Sprintf("%s%s.%016x", tablePath, metric.name, metric.hash) // TODO: use TableID
+func (cs *chunkStore) GetMetricPath(metric *MetricState, part *partmgr.DBPartition) string {
+	return fmt.Sprintf("%s%s.%x_%016x", part.GetPath(), cs.getMetricFullName(metric, part), part.GetId(), metric.hash)
+}
+
+func (cs *chunkStore) getMetricFullName(metric *MetricState, part *partmgr.DBPartition) string {
+	if part.GetHashingBuckets() == 0 {
+		return fmt.Sprintf("%s_%016x", metric.name, metric.hash)
+	} else {
+		return fmt.Sprintf("%s_%x", metric.name, int(metric.hash % uint64(part.GetHashingBuckets())))
+	}
 }
 
 // Read (Async) the current chunk state and data from the storage, used in the first chunk access
@@ -142,7 +150,8 @@ func (cs *chunkStore) GetChunksState(mc *MetricsCache, metric *MetricState, t in
 	// TODO: if policy to merge w old chunks need to get prev chunk, vs restart appender
 
 	// issue DB GetItem command to load last state of metric
-	path := cs.GetMetricPath(metric, part.GetPath())
+	path := cs.GetMetricPath(metric, part)
+	fmt.Println("metric1 path " + path)
 	getInput := v3io.GetItemInput{
 		Path: path, AttributeNames: []string{"_maxtime"}}
 
@@ -359,12 +368,13 @@ func (cs *chunkStore) WriteChunks(mc *MetricsCache, metric *MetricState) error {
 		// init aggregate arrays
 		lblexpr = lblexpr + cs.aggrList.InitExpr("v", numBuckets)
 
-		expr = lblexpr + fmt.Sprintf("_lset='%s'; ", metric.key) + expr
+		expr = lblexpr + fmt.Sprintf("_lset='%s'; ", metric.key) + fmt.Sprintf("partId='%d'; ", partition.GetId()) + expr
 	}
 
 	// Call V3IO async Update Item method
-	expr += fmt.Sprintf("_maxtime=%d;", cs.maxTime)       // TODO: use max() expr
-	path := cs.GetMetricPath(metric, partition.GetPath()) // TODO: use TableID for multi-partition
+	expr += fmt.Sprintf("_maxtime=%d;", cs.maxTime) // TODO: use max() expr
+	path := cs.GetMetricPath(metric, partition) // TODO: use TableID for multi-partition
+
 	request, err := mc.container.UpdateItem(
 		&v3io.UpdateItemInput{Path: path, Expression: &expr}, metric, mc.responseChan)
 	if err != nil {

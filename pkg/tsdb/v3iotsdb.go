@@ -37,6 +37,7 @@ import (
 
 const DB_VERSION = "1.0"
 const DB_CONFIG_PATH = "/dbconfig.json"
+const SCHEMA_PATH = "/.schema"
 
 type V3ioAdapter struct {
 	startTimeMargin int64
@@ -47,7 +48,7 @@ type V3ioAdapter struct {
 	partitionMngr   *partmgr.PartitionManager
 }
 
-func CreateTSDB(v3iocfg *config.V3ioConfig, dbconfig *config.DBPartConfig) error {
+func CreateTSDB(v3iocfg *config.V3ioConfig, dbconfig *config.DBPartConfig, schema *config.Schema) error {
 
 	logger, _ := utils.NewLogger(v3iocfg.Verbose)
 	container, err := utils.CreateContainer(
@@ -56,6 +57,7 @@ func CreateTSDB(v3iocfg *config.V3ioConfig, dbconfig *config.DBPartConfig) error
 		return errors.Wrap(err, "Failed to create data container")
 	}
 
+	//dbconfig
 	dbconfig.Signature = "TSDB"
 	dbconfig.Version = DB_VERSION
 
@@ -70,7 +72,18 @@ func CreateTSDB(v3iocfg *config.V3ioConfig, dbconfig *config.DBPartConfig) error
 		return fmt.Errorf("TSDB already exist in path: " + v3iocfg.Path)
 	}
 
-	err = container.Sync.PutObject(&v3io.PutObjectInput{Path: v3iocfg.Path + DB_CONFIG_PATH, Body: data})
+	 err = container.Sync.PutObject(&v3io.PutObjectInput{Path: v3iocfg.Path + DB_CONFIG_PATH, Body: data})
+	 if err != nil {
+		 return errors.Wrap(err, "Failed to create dbconfig")
+	 }
+
+	 //schema
+	schemaData, err := json.Marshal(schema)
+	if err != nil {
+		return errors.Wrap(err, "Failed to Marshal schema")
+	}
+
+	err = container.Sync.PutObject(&v3io.PutObjectInput{Path: v3iocfg.Path + SCHEMA_PATH, Body: schemaData})
 
 	return err
 }
@@ -121,7 +134,7 @@ func (a *V3ioAdapter) GetContainer() (*v3io.Container, string) {
 func (a *V3ioAdapter) connect() error {
 
 	fullpath := a.cfg.V3ioUrl + "/" + a.cfg.Container + "/" + a.cfg.Path
-	resp, err := a.container.Sync.GetObject(&v3io.GetObjectInput{Path: a.cfg.Path + "/dbconfig.json"})
+	resp, err := a.container.Sync.GetObject(&v3io.GetObjectInput{Path: a.cfg.Path + DB_CONFIG_PATH})
 	if err != nil {
 		return errors.Wrap(err, "Failed to read DB config at path: "+fullpath)
 	}
@@ -136,7 +149,13 @@ func (a *V3ioAdapter) connect() error {
 		return fmt.Errorf("Bad TSDB signature at path %s", fullpath)
 	}
 
-	a.partitionMngr = partmgr.NewPartitionMngr(&dbcfg, a.cfg.Path)
+	schema := config.Schema{}
+	resp, err = a.container.Sync.GetObject(&v3io.GetObjectInput{Path: a.cfg.Path + SCHEMA_PATH})
+	err = json.Unmarshal(resp.Body(), &schema)
+	if err != nil {
+		return errors.Wrap(err, "Failed to Unmarshal schema at path: "+fullpath)
+	}
+	a.partitionMngr = partmgr.NewPartitionMngr(&dbcfg, &schema, a.cfg.Path)
 	err = a.partitionMngr.Init()
 	if err != nil {
 		return errors.Wrap(err, "Failed to init DB partition manager at path: "+fullpath)

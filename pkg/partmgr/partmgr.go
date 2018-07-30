@@ -24,24 +24,26 @@ package partmgr
 
 import (
 	"fmt"
+	"sync"
 	"github.com/v3io/v3io-tsdb/config"
 	"github.com/v3io/v3io-tsdb/pkg/aggregate"
-	"sync"
 )
 
+const PARTITIONS_FILE = "/.partitions"
+
 // Create new Partition Manager, for now confined to one Cyclic partition
-func NewPartitionMngr(cfg *config.DBPartConfig, path string) *PartitionManager {
-	newMngr := &PartitionManager{cfg: cfg, path: path, cyclic: true, ignoreWrap: true}
-	newMngr.headPartition = NewDBPartition(newMngr)
+func NewPartitionMngr(cfg *config.DBPartConfig, schema *config.Schema, path string) *PartitionManager {
+	newMngr := &PartitionManager{cfg: cfg, path: path, cyclic: true, ignoreWrap: true, schema: schema}
+	newMngr.headPartition = NewDBPartition(newMngr, 1)
 	return newMngr
 }
 
 // Create and Init a new Partition
-func NewDBPartition(pmgr *PartitionManager) *DBPartition {
+func NewDBPartition(pmgr *PartitionManager, partId int) *DBPartition {
 	newPart := DBPartition{
 		manager:       pmgr,
-		path:          pmgr.path + "/0/", // TODO: format a string based on id & format
-		partID:        1,
+		path:          pmgr.path + "/",
+		partID:        partId,
 		startTime:     0,
 		days:          pmgr.cfg.DaysPerObj,
 		hoursInChunk:  pmgr.cfg.HrInChunk,
@@ -50,7 +52,7 @@ func NewDBPartition(pmgr *PartitionManager) *DBPartition {
 		rollupTime:    int64(pmgr.cfg.RollupMin) * 60 * 1000,
 	}
 
-	aggrType, _ := aggregate.AggrsFromString(pmgr.cfg.DefaultRollups) // TODO: error check & load part data from schema object
+	aggrType, _ := aggregate.AggrsFromString(pmgr.schema.Aggregators)
 	newPart.defaultRollups = aggrType
 	if pmgr.cfg.RollupMin != 0 {
 		newPart.rollupBuckets = pmgr.cfg.DaysPerObj * 24 * 60 / pmgr.cfg.RollupMin
@@ -64,8 +66,10 @@ type PartitionManager struct {
 	path          string
 	cfg           *config.DBPartConfig
 	headPartition *DBPartition
+	partitions    map[int]*DBPartition
 	cyclic        bool
 	ignoreWrap    bool
+	schema        *config.Schema
 }
 
 func (p *PartitionManager) IsCyclic() bool {
@@ -77,12 +81,13 @@ func (p *PartitionManager) GetConfig() *config.DBPartConfig {
 }
 
 func (p *PartitionManager) Init() error {
-
 	return nil
 }
 
 func (p *PartitionManager) TimeToPart(t int64) *DBPartition {
-
+	fmt.Println("TimeToPart t %d", t)
+	d, h := TimeToDHM(t)
+	fmt.Println("d h ", d, h)
 	return p.headPartition // TODO: find the matching partition, if newer create one
 }
 
@@ -110,6 +115,10 @@ type DBPartition struct {
 	rollupBuckets  int                // Total number of buckets per partition
 }
 
+func (p *DBPartition) GetHashingBuckets() int {
+	return p.manager.schema.ShardingBuckets
+}
+
 func (p *DBPartition) IsCyclic() bool {
 	return p.manager.cyclic
 }
@@ -119,6 +128,7 @@ func (p *DBPartition) HoursInChunk() int {
 }
 
 func (p *DBPartition) NextPart(t int64) *DBPartition {
+	fmt.Println("NextPart %d", t)
 	return p.manager.TimeToPart(t)
 }
 
@@ -246,4 +256,8 @@ func TimeToDHM(tmilli int64) (int, int) {
 	h := (t / 3600) % 24
 	d := t / 3600 / 24
 	return d, h
+}
+
+func (p *PartitionManager) updatePartitionsFile(partition *DBPartition) error {
+
 }

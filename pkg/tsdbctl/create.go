@@ -24,16 +24,22 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/v3io/v3io-tsdb/config"
 	"github.com/v3io/v3io-tsdb/pkg/tsdb"
+	"strings"
+	"github.com/v3io/v3io-tsdb/pkg/aggregate"
+	"github.com/pkg/errors"
 )
 
+const SCHEMA_VERSION = 0
+
 type createCommandeer struct {
-	cmd            *cobra.Command
-	rootCommandeer *RootCommandeer
-	path           string
-	daysPerObj     int
-	hrInChunk      int
-	defaultRollups string
-	rollupMin      int
+	cmd             *cobra.Command
+	rootCommandeer  *RootCommandeer
+	path            string
+	daysPerObj      int
+	hrInChunk       int
+	defaultRollups  string
+	rollupMin       int
+	shardingBuckets int
 }
 
 func newCreateCommandeer(rootCommandeer *RootCommandeer) *createCommandeer {
@@ -54,8 +60,9 @@ func newCreateCommandeer(rootCommandeer *RootCommandeer) *createCommandeer {
 	cmd.Flags().IntVarP(&commandeer.daysPerObj, "days", "d", 1, "number of days covered per partition")
 	cmd.Flags().IntVarP(&commandeer.hrInChunk, "chunk-hours", "t", 1, "number of hours in a single chunk")
 	cmd.Flags().StringVarP(&commandeer.defaultRollups, "rollups", "r", "",
-		"Default aggregation rollups, comma seperated: count,avg,sum,min,max,stddev")
+		"Default aggregation rollups, comma seperated: count,avg,sum,min,max,stddev,stdvar,last,rate")
 	cmd.Flags().IntVarP(&commandeer.rollupMin, "rollup-interval", "i", 60, "aggregation interval in minutes")
+	cmd.Flags().IntVarP(&commandeer.shardingBuckets, "sharding-buckets", "b", 64, "number of buckets to split key")
 
 	commandeer.cmd = cmd
 
@@ -76,6 +83,25 @@ func (cc *createCommandeer) create() error {
 		RollupMin:      cc.rollupMin,
 	}
 
-	return tsdb.CreateTSDB(cc.rootCommandeer.v3iocfg, &dbcfg)
+	aggrs := strings.Split(cc.defaultRollups, ",")
+	fields, err := aggregate.SchemaFieldFromString(aggrs)
+	if err != nil {
+		return errors.Wrap(err, "Failed to create aggregators list")
+	}
+	fields = append(fields, config.SchemaField{Name: "_name", Type: "string", Nullable: false, Items: ""})
+	fields = append(fields, config.SchemaField{Name: "partId", Type: "int", Nullable: false, Items: ""})
+
+	schema := config.Schema{
+		Version: SCHEMA_VERSION,
+		Aggregators: aggrs,
+		AggregatorsGranularityInSeconds: cc.rollupMin,
+		SampleRetention: dbcfg.DaysRetention,
+		PartitionRetentionInDays: dbcfg.DaysRetention,
+		ShardingBuckets: cc.shardingBuckets,
+		Partitioner: cc.daysPerObj,
+		Fields: fields,
+	}
+
+	return tsdb.CreateTSDB(cc.rootCommandeer.v3iocfg, &dbcfg, &schema)
 
 }

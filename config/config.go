@@ -39,7 +39,7 @@ type V3ioConfig struct {
 	// Disable is use in Prometheus to disable v3io and work with the internal TSDB
 	Disabled bool `json:"disabled,omitempty"`
 	// Set logging level: debug | info | warn | error (info by default)
-	Verbose  string `json:"verbose,omitempty"`
+	Verbose string `json:"verbose,omitempty"`
 	// Number of parallel V3IO worker routines
 	Workers int `json:"workers"`
 	// Number of parallel V3IO worker routines for queries (default is min between 8 and Workers)
@@ -86,6 +86,29 @@ type DBPartConfig struct {
 
 	// Metric specific policy
 	MetricsConfig map[string]MetricConfig `json:"metricsConfig,omitempty"`
+}
+
+type SchemaField struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Nullable bool   `json:"nullable"`
+	Items    string `json:"items,omitempty"`
+}
+
+type Schema struct {
+	Version                  int `json:"version"`
+	// from ["count", "avg", "sum", "min", "max", "stddev","stdvar","last","rate"]
+	Aggregators              []string `json:"aggregators"`
+	// in seconds
+	AggregatorsGranularityInSeconds int     `json:"aggregatorsGranularityInSeconds"`
+	// in hours
+	SampleRetention          int     `json:"sampleRetention"`
+	// in days
+	PartitionRetentionInDays int     `json:"partitionRetentionInDays"`
+	ShardingBuckets          int     `json:"shardingBuckets"`
+	// in days
+	Partitioner              int     `json:"partitioner"`
+	Fields                   []SchemaField `json:"fields"`
 }
 
 type MetricConfig struct {
