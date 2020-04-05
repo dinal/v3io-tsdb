@@ -13,11 +13,9 @@
 package utils
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/cespare/xxhash"
@@ -115,21 +113,21 @@ func (ls Labels) Swap(i, j int)      { ls[i], ls[j] = ls[j], ls[i] }
 func (ls Labels) Less(i, j int) bool { return ls[i].Name < ls[j].Name }
 
 func (ls Labels) String() string {
-	var b bytes.Buffer
+	var keyBuilder strings.Builder
 
-	b.WriteByte('{')
+	keyBuilder.WriteString("{")
 	for i, l := range ls {
 		if i > 0 {
-			b.WriteByte(',')
-			b.WriteByte(' ')
+			keyBuilder.WriteString(",")
+			keyBuilder.WriteString(" ")
 		}
-		b.WriteString(l.Name)
-		b.WriteByte('=')
-		b.WriteString(strconv.Quote(l.Value))
+		keyBuilder.WriteString(l.Name)
+		keyBuilder.WriteString("=")
+		keyBuilder.WriteString(l.Value)
 	}
-	b.WriteByte('}')
+	keyBuilder.WriteString("}")
 
-	return b.String()
+	return keyBuilder.String()
 }
 
 // MarshalJSON implements json.Marshaler.
