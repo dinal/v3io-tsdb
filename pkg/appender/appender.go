@@ -214,7 +214,7 @@ func (mc *MetricsCache) appendTV(metric *MetricState, t int64, v interface{}) {
 
 // First time add time & value to metric (by label set)
 func (mc *MetricsCache) Add(lset utils.LabelsIfc, t int64, v interface{}) (uint64, error) {
-
+	mc.logger.DebugWith("adding metric", "lset",lset)
 	err := verifyTimeValid(t)
 	if err != nil {
 		return 0, err

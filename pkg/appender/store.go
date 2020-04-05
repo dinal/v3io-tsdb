@@ -318,7 +318,7 @@ func (cs *chunkStore) writeChunks(mc *MetricsCache, metric *MetricState) (hasPen
 			sampleTime := cs.pending[pendingSampleIndex].t
 
 			if sampleTime <= cs.maxTime && !mc.cfg.OverrideOld {
-				mc.logger.WarnWith("Omitting the sample - time is earlier than the last sample time for this metric", "metric", metric.Lset, "T", sampleTime)
+				mc.logger.WarnWith("Omitting the sample - time is earlier than the last sample time for this metric", "metric", metric.Lset, "T", sampleTime, "key", metric.key, "metric.name", metric.name)
 
 				// If we have reached the end of the pending events and there are events to update, create an update expression and break from loop,
 				// Otherwise, discard the event and continue normally
