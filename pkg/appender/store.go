@@ -401,7 +401,10 @@ func (cs *chunkStore) writeChunks(mc *MetricsCache, metric *MetricState) (hasPen
 			pendingSampleIndex++
 			pendingSamplesCount++
 		}
-
+		// In case we advanced to a newer partition mark we need to get state again
+		if pendingSampleIndex < len(cs.pending) && !partition.InRange(cs.pending[pendingSampleIndex].t) {
+			metric.setState(storeStatePreGet)
+		}
 		cs.aggrList.Clear()
 		if pendingSampleIndex == len(cs.pending) {
 			cs.pending = cs.pending[:0]
